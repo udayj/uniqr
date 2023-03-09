@@ -1,6 +1,6 @@
 use clap::{App, Arg};
 use std::error::Error;
-use std::io::{self, BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Write, BufWriter};
 use std::fs::File;
 
 type MyResult<T> = Result<T, Box <dyn Error>>;
@@ -72,22 +72,46 @@ pub fn run(config: Config) -> MyResult<()> {
     let mut file = open(&config.in_file)
                     .map_err(|e| format!("{}: {}", config.in_file, e))?;
     
-    let mut line = String::new();
     let mut prev_line = String::new();
     let mut count = 0;
-    loop {
+    let mut writer: Box<dyn Write>;
+    if config.out_file.is_some() {
+        writer = Box::new(BufWriter::new(File::open(config.out_file.unwrap())?));
+    }
+    else {
+        writer = Box::new(BufWriter::new(io::stdout()));
+    }
 
-        let bytes = file.read_line(&mut line)?;
-        if bytes == 0 {
-            break;
-        }
+    for actual_line in file.lines() {
+
+        let mut line = actual_line.unwrap();
         
-        if line != prev_line || count==0{
-            println!("{}", &line);
+        if line != prev_line && count!=0{
+
+            if !config.count {
+                writeln!(writer,"{}", &prev_line);
+            }
+            else {
+                writeln!(writer, "{:>4} {}", count, &prev_line);
+            }
+            count = 0;
         }
         prev_line = line.clone();
+        line.clear();
         count += 1;
     }
+
+    if count == 0 {
+        return Ok(());
+    }
+    if !config.count {
+        writeln!(writer,"{}", prev_line);
+    }
+    else {
+
+        writeln!(writer, "{:>4} {}", count, prev_line);
+    }
+    writer.flush();
     Ok(())
 
 
